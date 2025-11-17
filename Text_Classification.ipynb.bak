@@ -1,0 +1,45 @@
+{
+    "cells": [
+        {
+            "cell_type": "markdown",
+            "id": "#VSC-2bfa5171",
+            "metadata": {
+                "language": "markdown"
+            },
+            "source": [
+                "# Text Classification to detect sensitive data exposure",
+                "",
+                "## Importing libraries and downloading the dataset"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "id": "#VSC-cbce4b62",
+            "metadata": {
+                "language": "python"
+            },
+            "source": [
+                "# Importing the necessary libraries",
+                "import tensorflow as tf",
+                "import json",
+                "import os",
+                "import random",
+                "",
+                "from tensorflow.keras.preprocessing.text import Tokenizer",
+                "from tensorflow.keras.preprocessing.sequence import pad_sequences",
+                "",
+                "# Downloading the dataset",
+                "git_folder = \"/content/Detection-of-Sensitive-Data-Exposure-in-Images\"",
+                "# If you run this notebook in an environment where the repo is not present,",
+                "# clone or copy the project into `git_folder` manually. Automated cloning of",
+                "# the legacy repo has been removed to avoid referencing the old GitHub URL.",
+                "# if os.path.exists(git_folder) == False:",
+                "#   (optional) clone or copy the project into `git_folder` if you need the full repo; otherwise place the dataset under the expected paths.",
+                "",
+                "dataset_folder = git_folder + \"/text_dataset/\"",
+                "sensitive_datafile = \"SensitiveDataset.json\"",
+                "nonsensitive_datafile = \"NonSensitiveDataset.json\""
+            ]
+        }
+    ]
+}
