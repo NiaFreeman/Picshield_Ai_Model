@@ -1,0 +1,59 @@
+{
+    "cells": [
+        {
+            "cell_type": "markdown",
+            "id": "#VSC-1c97169c",
+            "metadata": {
+                "language": "markdown"
+            },
+            "source": [
+                "# Image Classification to detect sensitive data exposure",
+                "",
+                "## Importing libraries and downloading the dataset"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "id": "#VSC-bd4c4a19",
+            "metadata": {
+                "language": "python"
+            },
+            "source": [
+                "# Importing the necessary libraries",
+                "import tensorflow as tf",
+                "import numpy as np",
+                "import os",
+                "",
+                "# Downloading the dataset",
+                "git_folder = \"/content/Detection-of-Sensitive-Data-Exposure-in-Images\"",
+                "# If you run this notebook in an environment where the repo is not present,",
+                "# clone or copy the project into `git_folder` manually. Automated cloning of",
+                "# the legacy repo has been removed to avoid referencing the old GitHub URL.",
+                "# if os.path.exists(git_folder) == False:",
+                "#   (optional) clone or copy the project into `git_folder` if you need the full repo; otherwise place the dataset under the expected paths.",
+                "",
+                "training_folder = git_folder + \"/dataset/training\"",
+                "validation_folder = git_folder + \"/dataset/validation\""
+            ]
+        },
+        {
+            "cell_type": "code",
+            "id": "#VSC-5ac9a334",
+            "metadata": {
+                "language": "python"
+            },
+            "source": [
+                "train_sensitive_dir = os.path.join(training_folder + \"/sensitive\")",
+                "train_nonsensitive_dir = os.path.join(training_folder + \"/nonsensitive\")",
+                "validation_sensitive_dir = os.path.join(validation_folder + \"/sensitive\")",
+                "validation_nonsensitive_dir = os.path.join(validation_folder + \"/nonsensitive\")",
+                "",
+                "# Image Dataset size",
+                "print('Total training sensitive images:', len(os.listdir(train_sensitive_dir)))",
+                "print('Total training nonsensitive images:', len(os.listdir(train_nonsensitive_dir)))",
+                "print('Total validation sensitive images:', len(os.listdir(validation_sensitive_dir)))",
+                "print('Total validation nonsensitive images:', len(os.listdir(validation_nonsensitive_dir)))"
+            ]
+        }
+    ]
+}

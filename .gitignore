@@ -1,0 +1,20 @@
+.github/workflows/firebase-hosting-pull-request.yml
+
+# Large training dataset (too big for GitHub)
+nsfw_dataset/
+
+# Large model files (over GitHub 50MB limit) - use TF.js versions instead
+models/nsfw_model.h5
+models/nsfw_model.keras
+models/nsfw_model_best.h5
+
+# Temporary model conversion folders
+webapp/public/models/nsfw_model_temp/
+webapp/public/models/nudenet-base-f16/
+webapp/public/nsfw_data_scraper/
+external/
+
+# Training examples (keep only what's in manifest)
+webapp/public/assets/images/examples/Suggestive_2.jpg
+webapp/public/assets/images/examples/Suggestive_3.jpg
+webapp/public/assets/images/examples/train/
