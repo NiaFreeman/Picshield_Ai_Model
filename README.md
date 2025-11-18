@@ -11,19 +11,37 @@ Key goals and constraints
 Run the phone-like UI locally and open it in your browser. Serving over HTTP(S) is required so model files load correctly (file:// will block model XHRs):
 
 ```powershell
-cd 'C:\Users\Shado\Downloads\Detection-of-Sensitive-Data-Exposure-in-Images-main\Detection-of-Sensitive-Data-Exposure-in-Images-main\webapp\public'
-python -m http.server 8000do
+cd webapp/public
+python -m http.server 8000
 # open http://localhost:8000 in your browser
 ```
 
 The demo HTML is `webapp/public/index.html`. Models used by the demo are in `webapp/public/models/` (TF.js converted artifacts). The demo contains a simple encrypted "Hidden" folder implementation for demonstration — for production Android you should use the Android Keystore + BiometricPrompt (see `docs/android_keystore.md`).
 
 ## Notebooks & training
-- `Image_Classification.ipynb` and `Text_Classification.ipynb` contain training code and are intended to be run in a Python environment. Any Colab-specific commands (apt-get, !tensorflowjs_converter, files.upload) are either commented or guarded so the notebooks run safely in local environments. The notebooks no longer contain Colab badges or direct links to the original author's GitHub.
+- `Image_Classification.ipynb` and `Text_Classification.ipynb` contain training code and are intended to be run in a Python environment. All commands are designed to run in local environments with standard Python/Jupyter setups.
 
 ## Privacy & security notes
 - Do not commit secrets (API keys, Firebase service files) to the repo. This project includes a placeholder `.firebaserc`; do not deploy to a public Firebase project without creating your own project and replacing the placeholder.
 - The web demo's IndexedDB + WebCrypto AES-GCM storage is for demonstration. For production-grade storage on mobile, use platform-provided key stores and biometric gating.
+
+## Spicy image guidelines
+
+- **Legal & consent:** Only include images that are explicitly adult (18+) and that you have permission to use. Do not include any images of minors or content that would be illegal in your jurisdiction. I will not assist with content involving minors or illegal material.
+- **Privacy:** Remove or anonymize any metadata (EXIF, geolocation) before sharing or committing datasets. Use `exiftool` or similar to strip metadata.
+- **Storage:** Large or sensitive images should not be committed directly to a public Git repository. Use Git LFS, private storage (S3, Google Drive), or keep them outside the repo and add a small manifest (see below).
+- **Labeling & split:** Keep labeled folders or a manifest file that maps image paths to labels (e.g., `nsfw`, `safe`, `suggestive`). Keep a reproducible train/val/test split (store the split indices/CSV in the dataset folder).
+- **Demo examples:** The demo includes example images in `webapp/public/assets/images/examples/`. To add spicy demo examples, place (or copy) up to three representative adult-only images there named `spicy_example_1.jpg`, `spicy_example_2.jpg`, and `spicy_example_3.jpg`. The repo contains a helper script `scripts/resize_spicy_samples.py` to resize and copy images from an external samples folder into the demo folder.
+
+Example: copy + resize using the included script (run from repo root):
+```powershell
+python scripts\resize_spicy_samples.py \
+	--src "C:\Users\Shado\Downloads\Spicy_Ai\Spicy_Ai_Training\samples" \
+	--dest "webapp/public/assets/images/examples" \
+	--count 3
+```
+
+The script creates demo-sized images (512px) and training-sized images (224px) under `webapp/public/assets/images/examples/train/`.
 
 ## Project structure (relevant)
 - `webapp/public/` — demo HTML/CSS/JS and TF.js models

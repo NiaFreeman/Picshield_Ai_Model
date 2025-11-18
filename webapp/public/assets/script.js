@@ -85,10 +85,24 @@ var loadFile = function(event) {
 // Load an example image (fetch from server and feed into the same flow as a file input)
 async function loadExample(relativePath){
   try{
-    const resp = await fetch(relativePath);
+    // Ensure path is properly formatted (handle both relative and absolute paths)
+    let fetchPath = relativePath;
+    if (!fetchPath.startsWith('/') && !fetchPath.startsWith('http')) {
+      fetchPath = '/' + fetchPath;
+    }
+    
+    console.log('Loading example from:', fetchPath);
+    
+    const resp = await fetch(fetchPath);
+    if (!resp.ok) {
+      throw new Error(`HTTP error! status: ${resp.status}`);
+    }
     const blob = await resp.blob();
+    if (!blob) {
+      throw new Error('Failed to retrieve blob from response');
+    }
     const fileName = relativePath.split('/').pop();
-    const file = new File([blob], fileName, { type: blob.type });
+    const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
     // create a faux event object similar to fileInput change
     const fauxEvent = { target: { files: [file] } };
     // set the input's files where possible (non-standard, but used for consistency)
@@ -96,7 +110,7 @@ async function loadExample(relativePath){
     loadFile(fauxEvent);
   } catch(e){
     console.error('Failed to load example image', e);
-    appendCompanionMessage('Failed to load example image.');
+    appendCompanionMessage('Failed to load example image: ' + e.message);
   }
 }
 
@@ -109,18 +123,30 @@ chk.addEventListener('change', () => {
 const classify = async () => {
   var image = document.getElementById('output');
   imagePrediction = classifyImage(image);
+  nsfwPrediction = classifyNSFW(image);
   textPrediction = extractText(image)
             .then((text) =>
             {
               return classifyText(text); 
             });
-  let image_conf = 0;
+  let image_result = 0;
+  let nsfw_result = 0;
   let text_conf = 0;
   await imagePrediction.then((value) =>
     { 
-      image_conf = value;
+      image_result = value;
       console.log("Image confidence = ", value);
-      for (let i = 0; i <= 50; i++) {
+      for (let i = 0; i <= 33; i++) {
+        progressBar.style.width = i + '%';
+        progressBar.innerHTML = i + '%';
+      }
+    }
+  );
+  await nsfwPrediction.then((value) =>
+    { 
+      nsfw_result = value;
+      console.log("NSFW confidence = ", value);
+      for (let i = 33; i <= 50; i++) {
         progressBar.style.width = i + '%';
         progressBar.innerHTML = i + '%';
       }
@@ -147,25 +173,65 @@ const classify = async () => {
   };
 
   // normalize returned values from models (the repo's model returns array or single value)
-  const imgScore = Array.isArray(image_conf) ? image_conf[0] : image_conf;
-  const txtScore = Array.isArray(text_conf) ? text_conf[0] : text_conf;
+  const imgScore = Array.isArray(image_result) ? (image_result[0] || 0) : (image_result || 0);
+  const nsfwScore = Array.isArray(nsfw_result) ? (nsfw_result[0] || 0) : (nsfw_result || 0);
+  const txtScore = Array.isArray(text_conf) ? (text_conf[0] || 0) : (text_conf || 0);
 
-  const finalScore = Math.max(imgScore || 0, txtScore || 0);
-  detection.detectionResults.push({ label: finalScore > 0.5 ? 'sensitive' : 'non_sensitive', score: finalScore, sensitive: finalScore > 0.5 });
+  // Log scores for debugging
+  console.log(`Scores - Document: ${Number(imgScore).toFixed(3)}, NSFW: ${Number(nsfwScore).toFixed(3)}, Text: ${Number(txtScore).toFixed(3)}`);
+
+  const finalScore = Math.max(Number(imgScore) || 0, Number(nsfwScore) || 0, Number(txtScore) || 0);
+  const isDocument = Number(imgScore) > 0.5;
+  const isNSFW = Number(nsfwScore) > 0.5; // Threshold adjusted for better NSFW detection
+  
+  let detectionLabel = 'non_sensitive';
+  if(isDocument) detectionLabel = 'sensitive_document';
+  if(isNSFW) detectionLabel = 'nsfw_content';
+  if(isDocument && isNSFW) detectionLabel = 'sensitive_document_nsfw';
+  
+  detection.detectionResults.push({ 
+    label: detectionLabel, 
+    score: finalScore, 
+    sensitive: finalScore > 0.5,
+    documentScore: imgScore,
+    nsfwScore: nsfwScore,
+    textScore: txtScore
+  });
   detection.actionRecommendation = { recommendedAction: finalScore > 0.8 ? 'move_to_hidden' : (finalScore > 0.5 ? 'blur' : 'none'), confidence: finalScore, availableActions: ['blur','move_to_hidden','delete','ignore'] };
   currentDetection = detection;
 
   if(finalScore > 0.5){
     sensitiveBadge.style.display = "block";
     actionsPanel.style.display = 'flex';
-    scanIndicator.textContent = 'Sensitive detected';
-    appendCompanionMessage(`Detected: Sensitive (confidence ${ (finalScore*100).toFixed(0) }%). Recommended: ${detection.actionRecommendation.recommendedAction}`);
+    
+    let detectionType = '';
+    if(isNSFW && isDocument) detectionType = 'NSFW + Sensitive Document';
+    else if(isNSFW) detectionType = 'NSFW Content';
+    else if(isDocument) detectionType = 'Sensitive Document';
+    else detectionType = 'Sensitive';
+    
+    scanIndicator.textContent = `${detectionType} detected`;
+    appendCompanionMessage(`Detected: ${detectionType} (confidence ${ (finalScore*100).toFixed(0) }%). Recommended: ${detection.actionRecommendation.recommendedAction}`);
+    
+    // AUTO-BLUR sensitive content
+    const img = document.getElementById('output');
+    if(img) {
+      img.style.filter = 'blur(12px)';
+      addSensitiveOverlay();
+    }
   }
   else{
     nonSensitiveBadge.style.display = "block";
     actionsPanel.style.display = 'none';
     scanIndicator.textContent = 'No sensitive content detected';
     appendCompanionMessage('No sensitive content detected.');
+    
+    // Remove blur and overlay for non-sensitive images
+    const img = document.getElementById('output');
+    if(img) {
+      img.style.filter = '';
+    }
+    removeSensitiveOverlay();
   }
 }
 
@@ -198,12 +264,52 @@ const classifyImage = async function(image){
                 .div(tf.scalar(255))
                 .expandDims(0);
 
-    const out = await window.image_model.predict(tensor).data();
-    return out;
+    const classification = await window.image_model
+                          .predict(tensor)
+                          .data()
+                          .then( (value) => 
+                          { return value; }
+                          );
+    
+    // Clean up tensor
+    tensor.dispose();
+    
+    return classification;
   } catch (e) {
-    console.warn('Image model not available, falling back to demo heuristic', e);
-    // Demo fallback: very small heuristic (file name contains 'sensitive')
-    if(currentImageFile && /sensitive|nsfw|nude/i.test(currentImageFile.name)) return [0.92];
+    console.warn('Image model error, using fallback:', e);
+    // Fallback: heuristic based on filename
+    if(currentImageFile && /sensitive|nsfw|nude|spicy|credit|card|id|screen|passport|license/i.test(currentImageFile.name)) return [0.92];
+    return [0.05];
+  }
+}
+
+const classifyNSFW = async function(image){
+  try {
+    if (!window.nsfw_model) throw new Error('nsfw_model not loaded');
+    let tensor = tf.browser.fromPixels(image)
+                .resizeBilinear([150, 150])
+                .div(tf.scalar(255))
+                .expandDims(0);
+
+    const classification = await window.nsfw_model
+                          .predict(tensor)
+                          .data()
+                          .then( (value) => 
+                          { 
+                            // Model was trained with inverted labels (nsfw=0, safe=1)
+                            // Invert the prediction: NSFW score = 1 - model_output
+                            return [1.0 - value[0]]; 
+                          }
+                          );
+    
+    // Clean up tensor
+    tensor.dispose();
+    
+    return classification;
+  } catch (e) {
+    console.warn('NSFW model error, using fallback:', e);
+    // Fallback: heuristic based on filename
+    if(currentImageFile && /nsfw|nude|sexy|porn|spicy|bikini|lingerie|cleavage/i.test(currentImageFile.name)) return [0.95];
     return [0.02];
   }
 }
@@ -237,14 +343,29 @@ const classifyText = async function(text){
 
 // Try to load TF.js models; silent fallback to demo mode if not possible.
 const setupPage = async() => {
+  let loadedCount = 0;
   try{
     scanIndicator.textContent = 'Loading models...';
+    console.log('Loading text model...');
     window.text_model = await tf.loadLayersModel('./models/text_model/model.json');
+    loadedCount++;
+    console.log('✓ Text model loaded (1/3)');
+    
+    console.log('Loading image model...');
     window.image_model = await tf.loadLayersModel('./models/image_model/model.json');
-    scanIndicator.textContent = 'Models loaded';
+    loadedCount++;
+    console.log('✓ Image model loaded (2/3)');
+    
+    console.log('Loading NSFW model...');
+    window.nsfw_model = await tf.loadLayersModel('./models/nsfw_model/model.json');
+    loadedCount++;
+    console.log('✓ NSFW model loaded (3/3)');
+    
+    scanIndicator.textContent = 'Models loaded (Document + NSFW)';
+    console.log('✓ All models loaded successfully (3/3)');
   } catch (e){
-    console.warn('Failed to load models locally, running in demo mode.', e);
-    scanIndicator.textContent = 'Demo mode (models unavailable)';
+    console.error(`Failed to load models (${loadedCount}/3 loaded):`, e);
+    scanIndicator.textContent = `Partial load (${loadedCount}/3 models) - some features disabled`;
     // keep app usable; classification functions will fallback
   }
 }
@@ -256,7 +377,7 @@ async function loadExamplesManifest(){
   const container = document.getElementById('examplesContainer');
   if(!container) return;
   try{
-    const resp = await fetch('./assets/images/examples/manifest.json');
+    const resp = await fetch('./assets/images/examples/manifest.json?v=' + Date.now());
     if(!resp.ok) return; // no manifest
     const list = await resp.json();
     if(!Array.isArray(list) || list.length === 0) return;
@@ -329,15 +450,66 @@ async function handleCompanionQuery(q){
   }
 }
 
+// Add SENSITIVE overlay label on top of blurred image
+function addSensitiveOverlay(){
+  let overlay = document.getElementById('sensitive-overlay');
+  
+  // Remove existing overlay if present
+  if(overlay) overlay.remove();
+  
+  // Use the drag-area as the container since that's where the image is
+  const dragArea = document.querySelector('.drag-area');
+  const img = document.getElementById('output');
+  if(!dragArea || !img) return;
+  
+  // Create overlay element
+  overlay = document.createElement('div');
+  overlay.id = 'sensitive-overlay';
+  overlay.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 0, 0, 0.85);
+    color: white;
+    padding: 15px 35px;
+    font-size: 42px;
+    font-weight: bold;
+    border-radius: 10px;
+    z-index: 1000;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9);
+    pointer-events: none;
+    font-family: Arial, sans-serif;
+    letter-spacing: 4px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  `;
+  overlay.textContent = 'SENSITIVE';
+  
+  // Ensure container has position relative for absolute positioning to work
+  if(window.getComputedStyle(dragArea).position === 'static') {
+    dragArea.style.position = 'relative';
+  }
+  
+  dragArea.appendChild(overlay);
+}
+
+// Remove SENSITIVE overlay
+function removeSensitiveOverlay(){
+  const overlay = document.getElementById('sensitive-overlay');
+  if(overlay) overlay.remove();
+}
+
 // Simple blur preview implementation
 function blurPreview(){
   const img = document.getElementById('output');
   if(!img) return;
   if(img.style.filter === 'blur(12px)'){
     img.style.filter = '';
+    removeSensitiveOverlay();
     appendCompanionMessage('Preview unblurred.');
   } else {
     img.style.filter = 'blur(12px)';
+    addSensitiveOverlay();
     appendCompanionMessage('Preview blurred.');
   }
 }
@@ -547,7 +719,7 @@ const closeExamplesModal = document.getElementById('closeExamplesModal');
 loadExamplesBtn.addEventListener('click', async () => {
   // Fetch and render examples in modal
   try{
-    const resp = await fetch('./assets/images/examples/manifest.json');
+    const resp = await fetch('./assets/images/examples/manifest.json?v=' + Date.now());
     if(!resp.ok) return appendCompanionMessage('No examples available.');
     const list = await resp.json();
     if(!Array.isArray(list) || list.length === 0) return appendCompanionMessage('No examples found.');
